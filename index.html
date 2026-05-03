@@ -3,74 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ポケカ自動検知</title>
-    <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
+    <title>ポケカ超速鑑定</title>
     <style>
         body { font-family: sans-serif; text-align: center; padding: 20px; }
-        #canvasInput { max-width: 100%; border: 2px solid #ccc; }
-        .btn { background: #007bff; color: white; padding: 15px; border-radius: 10px; border: none; font-size: 16px; margin: 5px; width: 90%; }
+        #canvasInput { max-width: 100%; border: 2px solid #ccc; touch-action: none; }
+        .btn { background: #007bff; color: white; padding: 15px 30px; border-radius: 10px; border: none; font-size: 18px; margin: 10px; }
     </style>
 </head>
 <body>
-    <h3>自動検知テスト</h3>
+    <h3>ポケカ超速鑑定（タップ式）</h3>
     <input type="file" id="fileInput" accept="image/*" style="display:none;">
     <button class="btn" onclick="document.getElementById('fileInput').click()">1. 画像を選ぶ</button>
-    <button class="btn" onclick="tryDetect()">2. 自動検知を開始</button>
-    <br>
+    <p id="msg">画像を選んだら、カードの四隅をタップしてね</p>
     <canvas id="canvasInput"></canvas>
-    <p id="msg">画像を選んで「自動検知を開始」を押してね</p>
 
     <script>
         const canvas = document.getElementById('canvasInput');
         const ctx = canvas.getContext('2d');
         const msg = document.getElementById('msg');
-        let imgElement = new Image();
+        let points = [];
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
             const reader = new FileReader();
             reader.onload = (event) => {
-                imgElement.onload = () => {
-                    canvas.width = imgElement.width;
-                    canvas.height = imgElement.height;
-                    ctx.drawImage(imgElement, 0, 0);
-                    msg.innerText = "画像読み込み完了。";
+                const img = new Image();
+                img.onload = () => {
+                    canvas.width = img.width; canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    points = []; msg.innerText = "四隅を順にタップ：左上→右上→右下→左下";
                 };
-                imgElement.src = event.target.result;
+                img.src = event.target.result;
             };
             reader.readAsDataURL(e.target.files[0]);
         });
 
-        function tryDetect() {
-            try {
-                msg.innerText = "検知中...";
-                let src = cv.imread(canvas);
-                let gray = new cv.Mat();
-                cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
-                cv.Canny(src, src, 50, 200, 3);
-                let contours = new cv.MatVector();
-                let hierarchy = new cv.Mat();
-                cv.findContours(src, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-                
-                let maxArea = 0;
-                let maxContour = null;
-                for (let i = 0; i < contours.size(); ++i) {
-                    let area = cv.contourArea(contours.get(i));
-                    if (area > maxArea) { maxArea = area; maxContour = contours.get(i); }
-                }
-                
-                if (maxContour) {
-                    let rect = cv.boundingRect(maxContour);
-                    ctx.strokeStyle = "red"; ctx.lineWidth = 10;
-                    ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-                    msg.innerText = "検知成功！枠を描きました。";
-                } else {
-                    msg.innerText = "枠が見つかりませんでした。別の画像で試してください。";
-                }
-                src.delete(); gray.delete();
-            } catch (err) {
-                msg.innerText = "エラー発生: " + err.message;
+        canvas.addEventListener('click', (e) => {
+            if (points.length >= 4) { points = []; ctx.clearRect(0,0,canvas.width,canvas.height); /* 画像再描画の処理を省略 */ }
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            points.push({x, y});
+            ctx.fillStyle = "red"; ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI * 2); ctx.fill();
+            
+            if (points.length === 4) {
+                const w1 = Math.abs(points[1].x - points[0].x);
+                const w2 = Math.abs(points[2].x - points[3].x);
+                const ratio = Math.round((w1 / (w1 + w2)) * 100);
+                msg.innerText = "結果: 左右比率 " + ratio + " : " + (100 - ratio);
             }
-        }
+        });
     </script>
 </body>
 </html>

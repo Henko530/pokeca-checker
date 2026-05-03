@@ -3,25 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ポケカ鑑定 Pro+斜め補正</title>
+    <title>ポケカ鑑定 Pro+拡大ルーペ</title>
     <style>
-        body { font-family: sans-serif; text-align: center; margin: 0; background: #1a1a1a; color: white; }
+        body { font-family: sans-serif; text-align: center; margin: 0; background: #1a1a1a; color: white; overflow-x: hidden; }
         .controls { padding: 15px; background: #222; }
         .btn { background: #28a745; color: white; padding: 12px 25px; border-radius: 8px; border: none; font-weight: bold; }
-        .container { position: relative; display: inline-block; touch-action: none; }
-        canvas { max-width: 100%; border: 1px solid #444; cursor: crosshair; }
+        .container { position: relative; display: inline-block; touch-action: none; background: #000; }
+        canvas { max-width: 100%; cursor: crosshair; display: block; }
+        /* 拡大ルーペのスタイル */
+        #loupe {
+            position: fixed; top: 10px; right: 10px; width: 120px; height: 120px;
+            border: 3px solid #28a745; border-radius: 50%; overflow: hidden;
+            display: none; z-index: 1000; background: #000; box-shadow: 0 0 15px rgba(0,0,0,0.8);
+        }
+        #loupe-canvas { width: 100%; height: 100%; }
         .result-panel { display: flex; justify-content: space-around; padding: 15px; background: #000; font-size: 18px; font-weight: bold; }
-        .info { font-size: 12px; color: #aaa; padding: 5px; }
+        .psa-label { font-size: 22px; font-weight: bold; padding: 10px; background: #000; }
     </style>
 </head>
 <body>
+    <div id="loupe"><canvas id="loupe-canvas"></canvas></div>
+
     <div class="controls">
         <input type="file" id="fileInput" accept="image/*" style="display:none;">
         <button class="btn" onclick="document.getElementById('fileInput').click()">画像を読み込む</button>
-        <div class="info">4つの角の○を、カードの「枠のキワ」に合わせてください</div>
     </div>
     
-    <div class="container">
+    <div class="container" id="canvas-container">
         <canvas id="canvas"></canvas>
     </div>
 
@@ -29,30 +37,29 @@
         <div>左右 <span id="lrRatio">--:--</span></div>
         <div>上下 <span id="tbRatio">--:--</span></div>
     </div>
-    <div id="psaCheck" style="font-size: 20px; font-weight: bold; padding: 10px;"></div>
+    <div id="psaCheck" class="psa-label"></div>
 
     <script>
         const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const loupe = document.getElementById('loupe');
+        const loupeCanvas = document.getElementById('loupe-canvas');
+        const lctx = loupeCanvas.getContext('2d');
+        
         let img = new Image();
-        // 4つの角の座標（初期値）
-        let pts = [
-            {x: 50, y: 50},   // 左上
-            {x: 350, y: 50},  // 右上
-            {x: 350, y: 550}, // 右下
-            {x: 50, y: 550}   // 左下
-        ];
+        let pts = [];
         let dragIdx = -1;
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
             const reader = new FileReader();
             reader.onload = (f) => {
                 img.onload = () => {
+                    const stageW = window.innerWidth;
+                    const scale = stageW / img.width;
                     canvas.width = img.width; canvas.height = img.height;
-                    const w = img.width, h = img.height;
                     pts = [
-                        {x: w*0.15, y: h*0.15}, {x: w*0.85, y: h*0.15},
-                        {x: w*0.85, y: h*0.85}, {x: w*0.15, y: h*0.85}
+                        {x: img.width*0.15, y: img.height*0.15}, {x: img.width*0.85, y: img.height*0.15},
+                        {x: img.width*0.85, y: img.height*0.85}, {x: img.width*0.15, y: img.height*0.85}
                     ];
                     draw();
                 };
@@ -64,71 +71,95 @@
         function draw() {
             ctx.drawImage(img, 0, 0);
             
-            // 枠線を描画
-            ctx.strokeStyle = "rgba(255, 0, 0, 0.6)";
-            ctx.lineWidth = Math.max(img.width/150, 3);
+            // ガイド線
+            ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+            ctx.lineWidth = Math.max(img.width/200, 2);
             ctx.beginPath();
             ctx.moveTo(pts[0].x, pts[0].y);
             pts.forEach(p => ctx.lineTo(p.x, p.y));
-            ctx.closePath();
-            ctx.stroke();
+            ctx.closePath(); ctx.stroke();
 
-            // 角の○を描画
+            // 照準マークの描画
             pts.forEach((p, i) => {
-                ctx.fillStyle = "rgba(255, 0, 0, 0.8)";
+                const s = Math.max(img.width/30, 20); // マークのサイズ
+                ctx.strokeStyle = i === dragIdx ? "#00ff00" : "#ff0000";
+                ctx.lineWidth = 3;
+                // 十字線
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, Math.max(img.width/40, 15), 0, Math.PI*2);
-                ctx.fill();
-                ctx.strokeStyle = "white";
+                ctx.moveTo(p.x - s, p.y); ctx.lineTo(p.x + s, p.y);
+                ctx.moveTo(p.x, p.y - s); ctx.lineTo(p.x, p.y + s);
+                ctx.stroke();
+                // 中心を抜いた円
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, s/2, 0, Math.PI*2);
                 ctx.stroke();
             });
             calculate();
         }
 
-        function calculate() {
-            // 斜めを考慮した各辺の長さ（余白）を簡易計算
-            const topW = pts[1].x - pts[0].x;
-            const bottomW = pts[2].x - pts[3].x;
-            const leftH = pts[3].y - pts[0].y;
-            const rightH = pts[2].y - pts[1].y;
+        function updateLoupe(x, y) {
+            const size = 150; // ルーペで見る範囲のサイズ
+            loupeCanvas.width = size; loupeCanvas.height = size;
+            lctx.drawImage(canvas, x - size/2, y - size/2, size, size, 0, 0, size, size);
+            // ルーペ内の中央照準
+            lctx.strokeStyle = "#00ff00";
+            lctx.lineWidth = 2;
+            lctx.beginPath();
+            lctx.moveTo(size/2, 0); lctx.lineTo(size/2, size);
+            lctx.moveTo(0, size/2); lctx.lineTo(size, size/2);
+            lctx.stroke();
+        }
 
+        function calculate() {
             const lw = (pts[0].x + pts[3].x) / 2;
             const rw = canvas.width - ((pts[1].x + pts[2].x) / 2);
             const th = (pts[0].y + pts[1].y) / 2;
             const bh = canvas.height - ((pts[2].y + pts[3].y) / 2);
-
             const lr = Math.round((lw / (lw + rw)) * 100);
             const tb = Math.round((th / (th + bh)) * 100);
-            
             document.getElementById('lrRatio').innerText = `${lr}:${100-lr}`;
             document.getElementById('tbRatio').innerText = `${tb}:${100-tb}`;
-            
             const isPsa10 = (lr >= 40 && lr <= 60) && (tb >= 40 && tb <= 60);
             const check = document.getElementById('psaCheck');
             check.innerText = isPsa10 ? "★ PSA10 圏内 ★" : "PSA10 圏外";
             check.style.color = isPsa10 ? "#00ff00" : "#ff4444";
         }
 
-        canvas.addEventListener('touchstart', (e) => {
+        const getPos = (e) => {
             const rect = canvas.getBoundingClientRect();
-            const x = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
-            const y = (e.touches[0].clientY - rect.top) * (canvas.height / rect.height);
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: (clientX - rect.left) * (canvas.width / rect.width),
+                y: (clientY - rect.top) * (canvas.height / rect.height)
+            };
+        };
+
+        canvas.addEventListener('touchstart', (e) => {
+            const pos = getPos(e);
+            const limit = Math.max(img.width/15, 40);
             pts.forEach((p, i) => {
-                const dist = Math.hypot(p.x - x, p.y - y);
-                if (dist < 80) dragIdx = i; // 反応範囲
+                if (Math.hypot(p.x - pos.x, p.y - pos.y) < limit) dragIdx = i;
             });
+            if(dragIdx !== -1) {
+                loupe.style.display = 'block';
+                updateLoupe(pts[dragIdx].x, pts[dragIdx].y);
+            }
         }, {passive: false});
 
         canvas.addEventListener('touchmove', (e) => {
             if (dragIdx === -1) return;
             e.preventDefault();
-            const rect = canvas.getBoundingClientRect();
-            pts[dragIdx].x = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
-            pts[dragIdx].y = (e.touches[0].clientY - rect.top) * (canvas.height / rect.height);
+            const pos = getPos(e);
+            pts[dragIdx].x = pos.x; pts[dragIdx].y = pos.y;
             draw();
+            updateLoupe(pos.x, pos.y);
         }, {passive: false});
 
-        window.addEventListener('touchend', () => dragIdx = -1);
+        window.addEventListener('touchend', () => {
+            dragIdx = -1;
+            loupe.style.display = 'none';
+        });
     </script>
 </body>
 </html>

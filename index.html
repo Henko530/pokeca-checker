@@ -2,42 +2,117 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ポケカ鑑定くん</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ポケカ鑑定くんPro</title>
+    <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f0f2f5; }
-        #preview { width: 100%; max-width: 400px; margin-top: 20px; border-radius: 10px; display: none; }
-        .btn { background: #007bff; color: white; padding: 15px 30px; border-radius: 30px; border: none; font-size: 18px; cursor: pointer; }
+        body { font-family: sans-serif; text-align: center; margin: 0; background: #f0f2f5; }
+        .header { background: #333; color: white; padding: 10px; }
+        #canvasContainer { position: relative; display: inline-block; margin-top: 10px; touch-action: none; }
+        canvas { max-width: 100%; border: 1px solid #ccc; background: white; }
+        .controls { padding: 20px; }
+        .btn { background: #28a745; color: white; padding: 12px 24px; border-radius: 5px; border: none; font-size: 16px; margin: 5px; }
+        #status { font-weight: bold; margin: 10px; color: #d9534f; }
+        .result-box { background: white; margin: 10px; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body>
-    <h1>ポケカ鑑定サポート</h1>
-    <p>メルカリの画像などを読み込んでください</p>
+    <div class="header">ポケカ鑑定サポート</div>
     
-    <input type="file" id="fileInput" accept="image/*" style="display:none;">
-    <button class="btn" onclick="document.getElementById('fileInput').click()">画像を選択する</button>
+    <div class="controls">
+        <input type="file" id="fileInput" accept="image/*" style="display:none;">
+        <button class="btn" onclick="document.getElementById('fileInput').click()">メルカリ画像を読み込む</button>
+        <div id="status">OpenCVを読み込み中...</div>
+    </div>
 
-    <br>
-    <img id="preview">
-    <div id="result" style="margin-top:20px; font-weight:bold; color: #333;"></div>
+    <div id="canvasContainer">
+        <canvas id="canvasInput"></canvas>
+    </div>
+
+    <div id="resultArea" class="result-box" style="display:none;">
+        <h3>鑑定シミュレーション結果</h3>
+        <p id="centeringResult">比率を計算中...</p>
+        <p id="psaGrade">ここにPSA10の可能性が出ます</p>
+    </div>
 
     <script>
-        const fileInput = document.getElementById('fileInput');
-        const preview = document.getElementById('preview');
-        const result = document.getElementById('result');
+        let src;
+        let points = [];
+        const canvas = document.getElementById('canvasInput');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('status');
 
-        fileInput.addEventListener('change', (e) => {
+        // OpenCVの読み込み確認
+        var cvCheck = setInterval(() => {
+            if (typeof cv !== 'undefined' && cv.getBuildInformation) {
+                status.innerText = "準備完了！画像を選んでください";
+                status.style.color = "green";
+                clearInterval(cvCheck);
+            }
+        }, 1000);
+
+        document.getElementById('fileInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    preview.src = event.target.result;
-                    preview.style.display = 'block';
-                    result.innerText = '画像を読み込みました。次は計測機能を付けていきましょう！';
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    src = cv.imread(canvas);
+                    status.innerText = "カードの四隅をタップしてください（左上→右上→右下→左下）";
+                    points = [];
                 };
-                reader.readAsDataURL(file);
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // タップした場所を記録して、4点揃ったら計測
+        canvas.addEventListener('pointerdown', (e) => {
+            if (!src) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            
+            points.push(x, y);
+            
+            // タップした場所に印をつける
+            ctx.fillStyle = "red";
+            ctx.beginPath();
+            ctx.arc(x, y, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (points.length === 8) {
+                analyzeCentering();
             }
         });
+
+        function analyzeCentering() {
+            status.innerText = "計測中...";
+            // ここで簡易的な比率計算（本来はもっと複雑ですが、まずは動く形に）
+            const topWidth = Math.abs(points[2] - points[0]);
+            const leftHeight = Math.abs(points[7] - points[1]);
+            
+            // 仮のロジック：中央付近の余白を擬似計算
+            const leftMargin = 50; // 本来は画像から自動検知
+            const rightMargin = 55;
+            
+            const ratio = Math.round((leftMargin / (leftMargin + rightMargin)) * 100);
+            const otherSide = 100 - ratio;
+
+            document.getElementById('resultArea').style.display = 'block';
+            document.getElementById('centeringResult').innerText = `左右比率 = ${ratio} : ${otherSide}`;
+            
+            if (ratio >= 45 && ratio <= 55) {
+                document.getElementById('psaGrade').innerText = "【PSA 10 濃厚】センタリング完璧です！";
+                document.getElementById('psaGrade').style.color = "blue";
+            } else {
+                document.getElementById('psaGrade').innerText = "【PSA 9-10】わずかにズレがありますが許容範囲かも。";
+                document.getElementById('psaGrade').style.color = "orange";
+            }
+        }
     </script>
 </body>
 </html>

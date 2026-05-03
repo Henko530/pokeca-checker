@@ -3,68 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ポケカ簡易鑑定</title>
+    <title>ポケカ自動鑑定</title>
+    <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; }
+        body { font-family: sans-serif; text-align: center; padding: 10px; }
         #canvasInput { max-width: 100%; border: 2px solid #ccc; }
-        .btn { background: #007bff; color: white; padding: 15px 30px; border-radius: 10px; border: none; font-size: 18px; margin: 10px; }
+        .btn { background: #007bff; color: white; padding: 15px; border-radius: 10px; border: none; font-size: 16px; margin: 5px; width: 90%; }
+        .auto-btn { background: #dc3545; }
     </style>
 </head>
 <body>
-    <h1>ポケカ簡易鑑定</h1>
+    <h3>ポケカ自動鑑定くん</h3>
     <input type="file" id="fileInput" accept="image/*" style="display:none;">
-    <button class="btn" onclick="document.getElementById('fileInput').click()">画像を選択する</button>
+    <button class="btn" onclick="document.getElementById('fileInput').click()">1. 画像を選ぶ</button>
+    <button class="btn auto-btn" onclick="autoDetect()">2. 自動で枠を検知</button>
     <br>
     <canvas id="canvasInput"></canvas>
-    <p id="msg">画像を読み込んでください</p>
+    <p id="msg">画像を選んで「自動で枠を検知」を押してね</p>
 
     <script>
-const canvas = document.getElementById('canvasInput');
+        const canvas = document.getElementById('canvasInput');
         const ctx = canvas.getContext('2d');
         const msg = document.getElementById('msg');
-        
-        // ★追加：タップした場所を記録しておく場所
-        let points = []; 
+        let imgElement = new Image();
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
-            const file = e.target.files[0];
             const reader = new FileReader();
             reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
-                    // ★追加：画像を読み直すたびに記録をリセット
-                    points = []; 
-                    msg.innerText = "カードの角を4回タップしてください（左上→右上→右下→左下）";
+                imgElement.onload = () => {
+                    canvas.width = imgElement.width;
+                    canvas.height = imgElement.height;
+                    ctx.drawImage(imgElement, 0, 0);
+                    msg.innerText = "画像読み込み完了。";
                 };
-                img.src = event.target.result;
+                imgElement.src = event.target.result;
             };
-            reader.readAsDataURL(file);
+            reader.readAsDataURL(e.target.files[0]);
         });
 
-        canvas.addEventListener('click', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+        function autoDetect() {
+            msg.innerText = "検知中...";
+            let src = cv.imread(canvas);
+            let dst = new cv.Mat();
+            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+            cv.Canny(src, src, 50, 200, 3);
+            let contours = new cv.MatVector();
+            let hierarchy = new cv.Mat();
+            cv.findContours(src, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
             
-            ctx.fillStyle = "red";
-            ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI * 2); ctx.fill();
-            
-            // ★追加：タップした場所をリストに追加
-            points.push({x, y});
-
-            if (points.length < 4) {
-                msg.innerText = "あと" + (4 - points.length) + "回タップしてね";
-            } else {
-                // ★追加：4回溜まったら計算開始！
-                const leftWidth = Math.abs(points[1].x - points[0].x);
-                const rightWidth = Math.abs(points[2].x - points[3].x);
-                const ratio = Math.round((leftWidth / (leftWidth + rightWidth)) * 100);
-                msg.innerText = "計算完了！左右の幅の比率は " + ratio + " : " + (100 - ratio) + " です！";
+            // 一番大きい輪郭を見つけて枠を描画
+            let maxArea = 0;
+            let maxContour;
+            for (let i = 0; i < contours.size(); ++i) {
+                let cnt = contours.get(i);
+                let area = cv.contourArea(cnt);
+                if (area > maxArea) { maxArea = area; maxContour = cnt; }
             }
-        });
+            
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 5;
+            let rect = cv.boundingRect(maxContour);
+            ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+            
+            msg.innerText = "枠を検知しました！比率計算完了。";
+            src.delete(); dst.delete();
+        }
     </script>
 </body>
 </html>

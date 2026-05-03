@@ -3,23 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ポケカ自動鑑定</title>
+    <title>ポケカ自動検知</title>
     <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 10px; }
+        body { font-family: sans-serif; text-align: center; padding: 20px; }
         #canvasInput { max-width: 100%; border: 2px solid #ccc; }
         .btn { background: #007bff; color: white; padding: 15px; border-radius: 10px; border: none; font-size: 16px; margin: 5px; width: 90%; }
-        .auto-btn { background: #dc3545; }
     </style>
 </head>
 <body>
-    <h3>ポケカ自動鑑定くん</h3>
+    <h3>自動検知テスト</h3>
     <input type="file" id="fileInput" accept="image/*" style="display:none;">
     <button class="btn" onclick="document.getElementById('fileInput').click()">1. 画像を選ぶ</button>
-    <button class="btn auto-btn" onclick="autoDetect()">2. 自動で枠を検知</button>
+    <button class="btn" onclick="tryDetect()">2. 自動検知を開始</button>
     <br>
     <canvas id="canvasInput"></canvas>
-    <p id="msg">画像を選んで「自動で枠を検知」を押してね</p>
+    <p id="msg">画像を選んで「自動検知を開始」を押してね</p>
 
     <script>
         const canvas = document.getElementById('canvasInput');
@@ -41,32 +40,36 @@
             reader.readAsDataURL(e.target.files[0]);
         });
 
-        function autoDetect() {
-            msg.innerText = "検知中...";
-            let src = cv.imread(canvas);
-            let dst = new cv.Mat();
-            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
-            cv.Canny(src, src, 50, 200, 3);
-            let contours = new cv.MatVector();
-            let hierarchy = new cv.Mat();
-            cv.findContours(src, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-            
-            // 一番大きい輪郭を見つけて枠を描画
-            let maxArea = 0;
-            let maxContour;
-            for (let i = 0; i < contours.size(); ++i) {
-                let cnt = contours.get(i);
-                let area = cv.contourArea(cnt);
-                if (area > maxArea) { maxArea = area; maxContour = cnt; }
+        function tryDetect() {
+            try {
+                msg.innerText = "検知中...";
+                let src = cv.imread(canvas);
+                let gray = new cv.Mat();
+                cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+                cv.Canny(src, src, 50, 200, 3);
+                let contours = new cv.MatVector();
+                let hierarchy = new cv.Mat();
+                cv.findContours(src, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+                
+                let maxArea = 0;
+                let maxContour = null;
+                for (let i = 0; i < contours.size(); ++i) {
+                    let area = cv.contourArea(contours.get(i));
+                    if (area > maxArea) { maxArea = area; maxContour = contours.get(i); }
+                }
+                
+                if (maxContour) {
+                    let rect = cv.boundingRect(maxContour);
+                    ctx.strokeStyle = "red"; ctx.lineWidth = 10;
+                    ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+                    msg.innerText = "検知成功！枠を描きました。";
+                } else {
+                    msg.innerText = "枠が見つかりませんでした。別の画像で試してください。";
+                }
+                src.delete(); gray.delete();
+            } catch (err) {
+                msg.innerText = "エラー発生: " + err.message;
             }
-            
-            ctx.strokeStyle = "red";
-            ctx.lineWidth = 5;
-            let rect = cv.boundingRect(maxContour);
-            ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-            
-            msg.innerText = "枠を検知しました！比率計算完了。";
-            src.delete(); dst.delete();
         }
     </script>
 </body>

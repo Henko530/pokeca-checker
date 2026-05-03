@@ -19,9 +19,12 @@
     <p id="msg">画像を読み込んでください</p>
 
     <script>
-        const canvas = document.getElementById('canvasInput');
+const canvas = document.getElementById('canvasInput');
         const ctx = canvas.getContext('2d');
         const msg = document.getElementById('msg');
+        
+        // ★追加：タップした場所を記録しておく場所
+        let points = []; 
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -32,7 +35,9 @@
                     canvas.width = img.width;
                     canvas.height = img.height;
                     ctx.drawImage(img, 0, 0);
-                    msg.innerText = "画像を表示しました！次はタップ位置を記録します。";
+                    // ★追加：画像を読み直すたびに記録をリセット
+                    points = []; 
+                    msg.innerText = "カードの角を4回タップしてください（左上→右上→右下→左下）";
                 };
                 img.src = event.target.result;
             };
@@ -43,9 +48,22 @@
             const rect = canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) * (canvas.width / rect.width);
             const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            
             ctx.fillStyle = "red";
             ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI * 2); ctx.fill();
-            msg.innerText = "タップしました: X=" + Math.round(x) + ", Y=" + Math.round(y);
+            
+            // ★追加：タップした場所をリストに追加
+            points.push({x, y});
+
+            if (points.length < 4) {
+                msg.innerText = "あと" + (4 - points.length) + "回タップしてね";
+            } else {
+                // ★追加：4回溜まったら計算開始！
+                const leftWidth = Math.abs(points[1].x - points[0].x);
+                const rightWidth = Math.abs(points[2].x - points[3].x);
+                const ratio = Math.round((leftWidth / (leftWidth + rightWidth)) * 100);
+                msg.innerText = "計算完了！左右の幅の比率は " + ratio + " : " + (100 - ratio) + " です！";
+            }
         });
     </script>
 </body>

@@ -3,84 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ポケカ鑑定 Pro+画像ガイド</title>
+    <title>ポケカ鑑定 Pro+斜め補正</title>
     <style>
         body { font-family: sans-serif; text-align: center; margin: 0; background: #1a1a1a; color: white; }
-        .controls { padding: 15px; background: #222; position: sticky; top: 0; z-index: 100; }
-        .btn { background: #28a745; color: white; padding: 15px 30px; border-radius: 8px; border: none; font-weight: bold; font-size: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); width: 80%; }
-        .container { position: relative; display: inline-block; touch-action: none; margin-top: 10px; }
-        canvas { max-width: 100%; border: 1px solid #444; background: #000; }
-        
-        /* ガイド表示用スタイル */
-        #guide-overlay { padding: 20px; color: #ccc; }
-        .example-box { border: 2px dashed #555; border-radius: 12px; padding: 15px; margin: 10px auto; max-width: 320px; background: #222; }
-        .guide-img { width: 150px; height: auto; margin: 15px auto; display: block; }
-        .line-sample { border-left: 3px solid red; padding-left: 10px; text-align: left; margin: 8px 0; font-size: 14px; }
-        
-        .result-panel { display: flex; justify-content: space-around; padding: 15px; background: #000; font-size: 20px; font-weight: bold; border-top: 1px solid #333; }
-        .psa-label { padding: 10px; font-size: 22px; font-weight: bold; background: #000; }
+        .controls { padding: 15px; background: #222; }
+        .btn { background: #28a745; color: white; padding: 12px 25px; border-radius: 8px; border: none; font-weight: bold; }
+        .container { position: relative; display: inline-block; touch-action: none; }
+        canvas { max-width: 100%; border: 1px solid #444; cursor: crosshair; }
+        .result-panel { display: flex; justify-content: space-around; padding: 15px; background: #000; font-size: 18px; font-weight: bold; }
+        .info { font-size: 12px; color: #aaa; padding: 5px; }
     </style>
 </head>
 <body>
     <div class="controls">
         <input type="file" id="fileInput" accept="image/*" style="display:none;">
         <button class="btn" onclick="document.getElementById('fileInput').click()">画像を読み込む</button>
-    </div>
-
-    <!-- 画像ガイド付きオーバーレイ -->
-    <div id="guide-overlay">
-        <div class="example-box">
-            <p style="color: #ffc107; font-weight: bold; margin-bottom: 10px;">🚩 ガイドの合わせ方</p>
-            
-            <!-- ガイドイラスト(SVG) -->
-            <svg class="guide-img" viewBox="0 0 200 260">
-                <rect x="10" y="10" width="180" height="240" rx="10" fill="#333" stroke="#666" stroke-width="2"/>
-                <rect x="30" y="30" width="140" height="200" rx="5" fill="#444" stroke="#ffc107" stroke-width="2"/>
-                <text x="100" y="135" fill="#666" font-size="12" text-anchor="middle">イラスト面</text>
-                <!-- 赤いガイド線 -->
-                <line x1="30" y1="0" x2="30" y2="260" stroke="red" stroke-width="3" stroke-dasharray="5,3" />
-                <line x1="170" y1="0" x2="170" y2="260" stroke="red" stroke-width="3" stroke-dasharray="5,3" />
-                <line x1="0" y1="30" x2="200" y2="30" stroke="red" stroke-width="3" stroke-dasharray="5,3" />
-                <line x1="0" y1="230" x2="200" y2="230" stroke="red" stroke-width="3" stroke-dasharray="5,3" />
-            </svg>
-
-            <div class="line-sample">赤い点線を<b>「黄色い枠のキワ」</b>に合わせる</div>
-            <p style="font-size: 12px; color: #888; margin-top: 10px;">※内枠のギリギリを狙うのがコツです！</p>
-        </div>
+        <div class="info">4つの角の○を、カードの「枠のキワ」に合わせてください</div>
     </div>
     
     <div class="container">
         <canvas id="canvas"></canvas>
     </div>
 
-    <div class="result-panel" id="result-ui" style="display:none;">
+    <div class="result-panel">
         <div>左右 <span id="lrRatio">--:--</span></div>
         <div>上下 <span id="tbRatio">--:--</span></div>
     </div>
-    <div id="psaCheck" class="psa-label" style="display:none;">判定待ち...</div>
+    <div id="psaCheck" style="font-size: 20px; font-weight: bold; padding: 10px;"></div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const guide = document.getElementById('guide-overlay');
-        const resultUi = document.getElementById('result-ui');
-        const psaCheck = document.getElementById('psaCheck');
         let img = new Image();
-        let lines = { left: 0, right: 0, top: 0, bottom: 0 };
-        let draggingLine = null;
+        // 4つの角の座標（初期値）
+        let pts = [
+            {x: 50, y: 50},   // 左上
+            {x: 350, y: 50},  // 右上
+            {x: 350, y: 550}, // 右下
+            {x: 50, y: 550}   // 左下
+        ];
+        let dragIdx = -1;
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
             const reader = new FileReader();
             reader.onload = (f) => {
                 img.onload = () => {
-                    guide.style.display = 'none';
-                    resultUi.style.display = 'flex';
-                    psaCheck.style.display = 'block';
                     canvas.width = img.width; canvas.height = img.height;
-                    lines = { 
-                        left: img.width * 0.15, right: img.width * 0.85, 
-                        top: img.height * 0.15, bottom: img.height * 0.85 
-                    };
+                    const w = img.width, h = img.height;
+                    pts = [
+                        {x: w*0.15, y: h*0.15}, {x: w*0.85, y: h*0.15},
+                        {x: w*0.85, y: h*0.85}, {x: w*0.15, y: h*0.85}
+                    ];
                     draw();
                 };
                 img.src = f.target.result;
@@ -90,53 +63,72 @@
 
         function draw() {
             ctx.drawImage(img, 0, 0);
-            ctx.strokeStyle = "rgba(255, 0, 0, 0.7)";
-            ctx.lineWidth = Math.max(img.width / 120, 4);
-            [lines.left, lines.right].forEach(x => {
-                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-            });
-            [lines.top, lines.bottom].forEach(y => {
-                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            
+            // 枠線を描画
+            ctx.strokeStyle = "rgba(255, 0, 0, 0.6)";
+            ctx.lineWidth = Math.max(img.width/150, 3);
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            pts.forEach(p => ctx.lineTo(p.x, p.y));
+            ctx.closePath();
+            ctx.stroke();
+
+            // 角の○を描画
+            pts.forEach((p, i) => {
+                ctx.fillStyle = "rgba(255, 0, 0, 0.8)";
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, Math.max(img.width/40, 15), 0, Math.PI*2);
+                ctx.fill();
+                ctx.strokeStyle = "white";
+                ctx.stroke();
             });
             calculate();
         }
 
         function calculate() {
-            const lw = lines.left; const rw = canvas.width - lines.right;
-            const th = lines.top; const bh = canvas.height - lines.bottom;
+            // 斜めを考慮した各辺の長さ（余白）を簡易計算
+            const topW = pts[1].x - pts[0].x;
+            const bottomW = pts[2].x - pts[3].x;
+            const leftH = pts[3].y - pts[0].y;
+            const rightH = pts[2].y - pts[1].y;
+
+            const lw = (pts[0].x + pts[3].x) / 2;
+            const rw = canvas.width - ((pts[1].x + pts[2].x) / 2);
+            const th = (pts[0].y + pts[1].y) / 2;
+            const bh = canvas.height - ((pts[2].y + pts[3].y) / 2);
+
             const lr = Math.round((lw / (lw + rw)) * 100);
             const tb = Math.round((th / (th + bh)) * 100);
+            
             document.getElementById('lrRatio').innerText = `${lr}:${100-lr}`;
             document.getElementById('tbRatio').innerText = `${tb}:${100-tb}`;
+            
             const isPsa10 = (lr >= 40 && lr <= 60) && (tb >= 40 && tb <= 60);
-            psaCheck.innerText = isPsa10 ? "★ PSA10 圏内 ★" : "PSA10 圏外";
-            psaCheck.style.color = isPsa10 ? "#00ff00" : "#ff4444";
+            const check = document.getElementById('psaCheck');
+            check.innerText = isPsa10 ? "★ PSA10 圏内 ★" : "PSA10 圏外";
+            check.style.color = isPsa10 ? "#00ff00" : "#ff4444";
         }
 
         canvas.addEventListener('touchstart', (e) => {
             const rect = canvas.getBoundingClientRect();
             const x = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
             const y = (e.touches[0].clientY - rect.top) * (canvas.height / rect.height);
-            const d = 60;
-            if (Math.abs(x - lines.left) < d) draggingLine = 'left';
-            else if (Math.abs(x - lines.right) < d) draggingLine = 'right';
-            else if (Math.abs(y - lines.top) < d) draggingLine = 'top';
-            else if (Math.abs(y - lines.bottom) < d) draggingLine = 'bottom';
+            pts.forEach((p, i) => {
+                const dist = Math.hypot(p.x - x, p.y - y);
+                if (dist < 80) dragIdx = i; // 反応範囲
+            });
         }, {passive: false});
 
         canvas.addEventListener('touchmove', (e) => {
-            if (!draggingLine) return;
+            if (dragIdx === -1) return;
             e.preventDefault();
             const rect = canvas.getBoundingClientRect();
-            const x = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
-            const y = (e.touches[0].clientY - rect.top) * (canvas.height / rect.height);
-            if (draggingLine === 'left') lines.left = x;
-            if (draggingLine === 'right') lines.right = x;
-            if (draggingLine === 'top') lines.top = y;
-            if (draggingLine === 'bottom') lines.bottom = y;
+            pts[dragIdx].x = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
+            pts[dragIdx].y = (e.touches[0].clientY - rect.top) * (canvas.height / rect.height);
             draw();
         }, {passive: false});
-        window.addEventListener('touchend', () => draggingLine = null);
+
+        window.addEventListener('touchend', () => dragIdx = -1);
     </script>
 </body>
 </html>

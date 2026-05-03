@@ -3,25 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ポケカ超速鑑定</title>
+    <title>ポケカ完全自動鑑定</title>
     <style>
         body { font-family: sans-serif; text-align: center; padding: 20px; }
-        #canvasInput { max-width: 100%; border: 2px solid #ccc; touch-action: none; }
-        .btn { background: #007bff; color: white; padding: 15px 30px; border-radius: 10px; border: none; font-size: 18px; margin: 10px; }
+        #canvasInput { max-width: 100%; border: 2px solid #ccc; }
+        .btn { background: #d9534f; color: white; padding: 15px 30px; border-radius: 10px; border: none; font-size: 18px; margin: 10px; }
+        #msg { font-size: 20px; font-weight: bold; margin-top: 20px; }
     </style>
 </head>
 <body>
-    <h3>ポケカ超速鑑定（タップ式）</h3>
+    <h3>完全自動センタリング測定</h3>
     <input type="file" id="fileInput" accept="image/*" style="display:none;">
-    <button class="btn" onclick="document.getElementById('fileInput').click()">1. 画像を選ぶ</button>
-    <p id="msg">画像を選んだら、カードの四隅をタップしてね</p>
+    <button class="btn" onclick="document.getElementById('fileInput').click()">画像を選んで自動解析</button>
+    <br>
     <canvas id="canvasInput"></canvas>
+    <p id="msg">画像を選ぶと自動で解析します...</p>
 
     <script>
         const canvas = document.getElementById('canvasInput');
         const ctx = canvas.getContext('2d');
         const msg = document.getElementById('msg');
-        let points = [];
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
             const reader = new FileReader();
@@ -30,28 +31,44 @@
                 img.onload = () => {
                     canvas.width = img.width; canvas.height = img.height;
                     ctx.drawImage(img, 0, 0);
-                    points = []; msg.innerText = "四隅を順にタップ：左上→右上→右下→左下";
+                    autoAnalyze();
                 };
                 img.src = event.target.result;
             };
             reader.readAsDataURL(e.target.files[0]);
         });
 
-        canvas.addEventListener('click', (e) => {
-            if (points.length >= 4) { points = []; ctx.clearRect(0,0,canvas.width,canvas.height); /* 画像再描画の処理を省略 */ }
-            const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
-            points.push({x, y});
-            ctx.fillStyle = "red"; ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI * 2); ctx.fill();
+        function autoAnalyze() {
+            msg.innerText = "自動解析中...";
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
             
-            if (points.length === 4) {
-                const w1 = Math.abs(points[1].x - points[0].x);
-                const w2 = Math.abs(points[2].x - points[3].x);
-                const ratio = Math.round((w1 / (w1 + w2)) * 100);
-                msg.innerText = "結果: 左右比率 " + ratio + " : " + (100 - ratio);
+            // シンプルな枠検出：画像の四隅から「変化」を探す
+            let minX = canvas.width, maxX = 0;
+            // 閾値（色の変化をどこで判定するか）
+            const threshold = 100;
+
+            for (let y = 0; y < canvas.height; y += 10) {
+                for (let x = 0; x < canvas.width; x += 10) {
+                    const i = (y * canvas.width + x) * 4;
+                    if (data[i] < threshold) { // 暗い部分をカードの枠とみなす
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                    }
+                }
             }
-        });
+            
+            // 結果を描画して計算
+            ctx.strokeStyle = "red"; ctx.lineWidth = 10;
+            ctx.strokeRect(minX, 0, maxX - minX, canvas.height);
+            
+            const leftWidth = minX;
+            const rightWidth = canvas.width - maxX;
+            const total = leftWidth + rightWidth;
+            const ratio = Math.round((leftWidth / total) * 100);
+            
+            msg.innerText = "解析完了：左右比率 " + ratio + " : " + (100 - ratio);
+        }
     </script>
 </body>
 </html>

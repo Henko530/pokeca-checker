@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ポケカ鑑定くん</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f0f2f5; }
+        #preview { width: 100%; max-width: 400px; margin-top: 20px; border-radius: 10px; display: none; }
+        .btn { background: #007bff; color: white; padding: 15px 30px; border-radius: 30px; border: none; font-size: 18px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>ポケカ鑑定サポート</h1>
+    <p>メルカリの画像などを読み込んでください</p>
+    
+    <input type="file" id="fileInput" accept="image/*" style="display:none;">
+    <button class="btn" onclick="document.getElementById('fileInput').click()">画像を選択する</button>
+
+    <br>
+    <img id="preview">
+    <div id="result" style="margin-top:20px; font-weight:bold; color: #333;"></div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const result = document.getElementById('result');
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    preview.src = event.target.result;
+                    preview.style.display = 'block';
+                    result.innerText = '画像を読み込みました。次は計測機能を付けていきましょう！';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    </script>
+</body>
+</html>

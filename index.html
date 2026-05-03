@@ -2,54 +2,26 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ポケカ鑑定くんPro</title>
-    <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ポケカ簡易鑑定</title>
     <style>
-        body { font-family: sans-serif; text-align: center; margin: 0; background: #f0f2f5; }
-        .header { background: #333; color: white; padding: 10px; }
-        #canvasContainer { position: relative; display: inline-block; margin-top: 10px; touch-action: none; }
-        canvas { max-width: 100%; border: 1px solid #ccc; background: white; }
-        .controls { padding: 20px; }
-        .btn { background: #28a745; color: white; padding: 12px 24px; border-radius: 5px; border: none; font-size: 16px; margin: 5px; }
-        #status { font-weight: bold; margin: 10px; color: #d9534f; }
-        .result-box { background: white; margin: 10px; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        body { font-family: sans-serif; text-align: center; padding: 20px; }
+        #canvasInput { max-width: 100%; border: 2px solid #ccc; }
+        .btn { background: #007bff; color: white; padding: 15px 30px; border-radius: 10px; border: none; font-size: 18px; margin: 10px; }
     </style>
 </head>
 <body>
-    <div class="header">ポケカ鑑定サポート</div>
-    
-    <div class="controls">
-        <input type="file" id="fileInput" accept="image/*" style="display:none;">
-        <button class="btn" onclick="document.getElementById('fileInput').click()">メルカリ画像を読み込む</button>
-        <div id="status">OpenCVを読み込み中...</div>
-    </div>
-
-    <div id="canvasContainer">
-        <canvas id="canvasInput"></canvas>
-    </div>
-
-    <div id="resultArea" class="result-box" style="display:none;">
-        <h3>鑑定シミュレーション結果</h3>
-        <p id="centeringResult">比率を計算中...</p>
-        <p id="psaGrade">ここにPSA10の可能性が出ます</p>
-    </div>
+    <h1>ポケカ簡易鑑定</h1>
+    <input type="file" id="fileInput" accept="image/*" style="display:none;">
+    <button class="btn" onclick="document.getElementById('fileInput').click()">画像を選択する</button>
+    <br>
+    <canvas id="canvasInput"></canvas>
+    <p id="msg">画像を読み込んでください</p>
 
     <script>
-        let src;
-        let points = [];
         const canvas = document.getElementById('canvasInput');
         const ctx = canvas.getContext('2d');
-        const status = document.getElementById('status');
-
-        // OpenCVの読み込み確認
-        var cvCheck = setInterval(() => {
-            if (typeof cv !== 'undefined' && cv.getBuildInformation) {
-                status.innerText = "準備完了！画像を選んでください";
-                status.style.color = "green";
-                clearInterval(cvCheck);
-            }
-        }, 1000);
+        const msg = document.getElementById('msg');
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -60,59 +32,21 @@
                     canvas.width = img.width;
                     canvas.height = img.height;
                     ctx.drawImage(img, 0, 0);
-                    src = cv.imread(canvas);
-                    status.innerText = "カードの四隅をタップしてください（左上→右上→右下→左下）";
-                    points = [];
+                    msg.innerText = "画像を表示しました！次はタップ位置を記録します。";
                 };
                 img.src = event.target.result;
             };
             reader.readAsDataURL(file);
         });
 
-        // タップした場所を記録して、4点揃ったら計測
-        canvas.addEventListener('pointerdown', (e) => {
-            if (!src) return;
+        canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) * (canvas.width / rect.width);
             const y = (e.clientY - rect.top) * (canvas.height / rect.height);
-            
-            points.push(x, y);
-            
-            // タップした場所に印をつける
             ctx.fillStyle = "red";
-            ctx.beginPath();
-            ctx.arc(x, y, 10, 0, Math.PI * 2);
-            ctx.fill();
-
-            if (points.length === 8) {
-                analyzeCentering();
-            }
+            ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI * 2); ctx.fill();
+            msg.innerText = "タップしました: X=" + Math.round(x) + ", Y=" + Math.round(y);
         });
-
-        function analyzeCentering() {
-            status.innerText = "計測中...";
-            // ここで簡易的な比率計算（本来はもっと複雑ですが、まずは動く形に）
-            const topWidth = Math.abs(points[2] - points[0]);
-            const leftHeight = Math.abs(points[7] - points[1]);
-            
-            // 仮のロジック：中央付近の余白を擬似計算
-            const leftMargin = 50; // 本来は画像から自動検知
-            const rightMargin = 55;
-            
-            const ratio = Math.round((leftMargin / (leftMargin + rightMargin)) * 100);
-            const otherSide = 100 - ratio;
-
-            document.getElementById('resultArea').style.display = 'block';
-            document.getElementById('centeringResult').innerText = `左右比率 = ${ratio} : ${otherSide}`;
-            
-            if (ratio >= 45 && ratio <= 55) {
-                document.getElementById('psaGrade').innerText = "【PSA 10 濃厚】センタリング完璧です！";
-                document.getElementById('psaGrade').style.color = "blue";
-            } else {
-                document.getElementById('psaGrade').innerText = "【PSA 9-10】わずかにズレがありますが許容範囲かも。";
-                document.getElementById('psaGrade').style.color = "orange";
-            }
-        }
     </script>
 </body>
 </html>
